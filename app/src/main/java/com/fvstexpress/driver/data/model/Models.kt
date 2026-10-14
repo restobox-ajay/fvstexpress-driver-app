@@ -41,6 +41,16 @@ data class PresenceRequest(val online: Boolean, val latitude: Double? = null, va
 @Serializable
 data class PresenceResponse(val online: Boolean)
 
+/** A GPS ping taken while offline; [recordedAt] is when the phone got the fix (ISO 8601). */
+@Serializable
+data class PingPoint(val latitude: Double, val longitude: Double, val recordedAt: String)
+
+@Serializable
+data class PingHistoryRequest(val pings: List<PingPoint>)
+
+@Serializable
+data class PingHistoryResponse(val saved: Int, val skipped: Int)
+
 /** event = start | break_start | break_end | end */
 @Serializable
 data class WorkRequest(val event: String, val at: String? = null)

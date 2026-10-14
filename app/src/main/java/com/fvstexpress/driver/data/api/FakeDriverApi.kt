@@ -25,6 +25,8 @@ import com.fvstexpress.driver.data.model.PhotoResponse
 import com.fvstexpress.driver.data.model.PickedUpOrder
 import com.fvstexpress.driver.data.model.PickedUpRequest
 import com.fvstexpress.driver.data.model.PickedUpResponse
+import com.fvstexpress.driver.data.model.PingHistoryRequest
+import com.fvstexpress.driver.data.model.PingHistoryResponse
 import com.fvstexpress.driver.data.model.PingResponse
 import com.fvstexpress.driver.data.model.PresenceRequest
 import com.fvstexpress.driver.data.model.PresenceResponse
@@ -222,6 +224,7 @@ class FakeDriverApi : DriverApi {
     override suspend fun me(): DriverDto { lag(); return driver.copy(online = online) }
 
     override suspend fun presence(body: PresenceRequest): PresenceResponse { online = body.online; return PresenceResponse(online) }
+    override suspend fun presenceHistory(body: PingHistoryRequest) = PingHistoryResponse(body.pings.size, 0)
 
     override suspend fun work(body: WorkRequest): WorkResponse {
         lag()

@@ -17,6 +17,7 @@ import com.fvstexpress.driver.data.model.MessagesResponse
 import com.fvstexpress.driver.data.model.OrderDetail
 import com.fvstexpress.driver.data.model.PickedUpRequest
 import com.fvstexpress.driver.data.model.PickedUpResponse
+import com.fvstexpress.driver.data.model.PingPoint
 import com.fvstexpress.driver.data.model.PingResponse
 import com.fvstexpress.driver.data.model.PresenceRequest
 import com.fvstexpress.driver.data.model.RefreshRequest
@@ -31,6 +32,7 @@ import com.fvstexpress.driver.data.model.WorkRequest
 import com.fvstexpress.driver.data.model.WorkResponse
 import com.fvstexpress.driver.data.model.WorkToday
 import com.fvstexpress.driver.data.offline.OfflineQueue
+import com.fvstexpress.driver.data.offline.PingBacklog
 import com.fvstexpress.driver.data.offline.QueuedCall
 import com.fvstexpress.driver.data.session.SessionStore
 import kotlinx.serialization.KSerializer
@@ -45,8 +47,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.io.File
 import java.io.IOException
+import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
 import java.util.UUID
@@ -62,6 +66,7 @@ class DriverRepository(
     private val api: DriverApi,
     private val session: SessionStore,
     private val queue: OfflineQueue,
+    private val pingBacklog: PingBacklog,
 ) {
     private val json = ApiFactory.json
 
@@ -133,7 +138,23 @@ class DriverRepository(
         }
     }
 
-    suspend fun sendPing(lat: Double, lng: Double) { api.presence(PresenceRequest(true, lat, lng)) }
+    /**
+     * Live GPS ping. With no signal (or a server error) it's kept in [PingBacklog] with the fix's own
+     * time and sent later, so the driven-route history has no gaps.
+     */
+    suspend fun sendPing(lat: Double, lng: Double, fixTimeMillis: Long) {
+        try {
+            api.presence(PresenceRequest(true, lat, lng))
+            if (!pingBacklog.isEmpty()) pingBacklog.scheduleSync()
+        } catch (e: IOException) {
+            pingBacklog.add(PingPoint(lat, lng, isoTime(fixTimeMillis)))
+        } catch (e: HttpException) {
+            if (e.code() >= 500) pingBacklog.add(PingPoint(lat, lng, isoTime(fixTimeMillis)))
+        }
+    }
+
+    private fun isoTime(millis: Long): String =
+        OffsetDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault()).truncatedTo(ChronoUnit.SECONDS).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
     suspend fun work(event: String): ApiResult<WorkResponse> = write("work", WorkRequest(event, now()), "Hours: $event") { api.work(WorkRequest(event, now())) }
     suspend fun workToday(): ApiResult<WorkToday> = call { api.workToday() }

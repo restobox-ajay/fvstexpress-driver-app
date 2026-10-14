@@ -43,7 +43,8 @@ object LocationHolder {
 
 /**
  * Runs while the driver is Online: requests a fix every 15 s and sends it to POST /presence, which
- * feeds the admin Live Tracking map, driven-route history and route exceptions (spec §6).
+ * feeds the admin Live Tracking map, driven-route history and route exceptions (spec §6). Pings that
+ * fail for lack of signal are kept and sent later (PingBacklog).
  */
 class LocationService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -54,7 +55,7 @@ class LocationService : Service() {
             val loc = result.lastLocation ?: return
             LocationHolder.update(loc)
             val repo = (application as FvstApp).container.repository
-            scope.launch { runCatching { repo.sendPing(loc.latitude, loc.longitude) } }
+            scope.launch { runCatching { repo.sendPing(loc.latitude, loc.longitude, loc.time) } }
         }
     }
 

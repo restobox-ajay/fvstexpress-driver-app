@@ -15,6 +15,8 @@ import com.fvstexpress.driver.data.model.OrderDetail
 import com.fvstexpress.driver.data.model.PhotoResponse
 import com.fvstexpress.driver.data.model.PickedUpRequest
 import com.fvstexpress.driver.data.model.PickedUpResponse
+import com.fvstexpress.driver.data.model.PingHistoryRequest
+import com.fvstexpress.driver.data.model.PingHistoryResponse
 import com.fvstexpress.driver.data.model.PingResponse
 import com.fvstexpress.driver.data.model.PresenceRequest
 import com.fvstexpress.driver.data.model.PresenceResponse
@@ -53,6 +55,7 @@ interface DriverApi {
     // Driver, presence, hours
     @GET("me") suspend fun me(): DriverDto
     @POST("presence") suspend fun presence(@Body body: PresenceRequest): PresenceResponse
+    @POST("presence/history") suspend fun presenceHistory(@Body body: PingHistoryRequest): PingHistoryResponse
     @POST("work") suspend fun work(@Body body: WorkRequest): WorkResponse
     @GET("work/today") suspend fun workToday(): WorkToday
 
