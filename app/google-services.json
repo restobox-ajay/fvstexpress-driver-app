@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "652191048666",
+    "project_id": "fvst-driver-app",
+    "storage_bucket": "fvst-driver-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:652191048666:android:2958dd4f838b727dfed6e3",
+        "android_client_info": {
+          "package_name": "com.fvstexpress.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMaA05yDTOuQuPMPxC6u3cMR8Yp6uqX9g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

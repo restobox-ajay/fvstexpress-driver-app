@@ -1,0 +1,2015 @@
+{
+  "info": {
+    "_postman_id": "455e18ef-f33d-4893-acc6-b7070d132248",
+    "name": "FVST Express Driver API",
+    "description": "Driver app endpoints served by fvstexpress-admin under /driver-api/v1.\n\n1. Pick an environment (Local WAMP or Android emulator) and set driverLogin / driverPin to a driver whose PIN was set in Drivers › Edit driver.\n2. Run the folders top to bottom (Collection Runner or newman): they follow a real driver day — log in, load tasks, pick up, deliver with a photo, fail the second drop-off, messages, end of day, log out.\n\nTokens and stop keys are filled in automatically. Every call is visible in the admin under Drivers › Driver API Log.\nWrites send an Idempotency-Key header so retried offline taps are applied once.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.collectionVariables.set('today', new Date().toISOString().slice(0, 10));",
+          "pm.collectionVariables.set('now', new Date().toISOString().replace(/\\.\\d{3}Z$/, '+00:00'));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "stopKey",
+      "value": "P-1"
+    },
+    {
+      "key": "reference",
+      "value": "JOB-1"
+    },
+    {
+      "key": "dropoffStopKey",
+      "value": "D-2"
+    },
+    {
+      "key": "dropoffReference",
+      "value": "JOB-1"
+    },
+    {
+      "key": "photoId",
+      "value": ""
+    },
+    {
+      "key": "messageId",
+      "value": "1"
+    },
+    {
+      "key": "today",
+      "value": ""
+    },
+    {
+      "key": "pickupRefs",
+      "value": "[]"
+    },
+    {
+      "key": "failStopKey",
+      "value": ""
+    },
+    {
+      "key": "failReference",
+      "value": ""
+    },
+    {
+      "key": "now",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Auth",
+      "description": "PIN login. Tokens are saved to collection variables automatically.",
+      "item": [
+        {
+          "name": "Log in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Phone number or employee card # + PIN. Saves access_token and refresh_token into the collection variables.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"{{driverLogin}}\",\n  \"pin\": \"{{driverPin}}\",\n  \"device_id\": \"postman\",\n  \"push_token\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', j.access_token);",
+                  "pm.collectionVariables.set('refreshToken', j.refresh_token);",
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('driver returned', () => pm.expect(pm.response.json().driver.id).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Swap the refresh token for a new pair (refresh tokens rotate).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', j.access_token);",
+                  "pm.collectionVariables.set('refreshToken', j.refresh_token);",
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('new token pair', () => pm.expect(pm.response.json().access_token).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Driver, presence & hours",
+      "description": "",
+      "item": [
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "Driver profile + dispatch phone."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Presence (online + GPS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/presence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "presence"
+              ]
+            },
+            "description": "Online/offline toggle and GPS ping (every 10-15 s while online).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"online\": true,\n  \"latitude\": 49.2346,\n  \"longitude\": -123.1559\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Work: start",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work"
+              ]
+            },
+            "description": "event = start | break_start | break_end | end.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"start\",\n  \"at\": \"{{now}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Work: break start",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"break_start\",\n  \"at\": \"{{now}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Work: break end",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"break_end\",\n  \"at\": \"{{now}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Work today",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work/today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work",
+                "today"
+              ]
+            },
+            "description": "Hours worked today and breaks (profile page)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Tasks & route",
+      "description": "Stops - Today fills stopKey, pickupRefs, dropoffStopKey/dropoffReference and failStopKey/failReference.",
+      "item": [
+        {
+          "name": "Stops - Today",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops?view=today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "today"
+                }
+              ]
+            },
+            "description": "view = today | all | completed"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const s = (j.days[0] || {}).stops || [];",
+                  "pm.test('has stops for today', () => pm.expect(s.length).to.be.above(0));",
+                  "const p = s.find(x => x.leg === 'pickup');",
+                  "const d = s.filter(x => x.leg === 'dropoff');",
+                  "if (p) { pm.collectionVariables.set('stopKey', p.stop_key); pm.collectionVariables.set('reference', p.orders[0].reference); pm.collectionVariables.set('pickupRefs', JSON.stringify(p.orders.map(o => o.reference))); }",
+                  "if (d[0]) { pm.collectionVariables.set('dropoffStopKey', d[0].stop_key); pm.collectionVariables.set('dropoffReference', d[0].orders[0].reference); }",
+                  "if (d[1]) { pm.collectionVariables.set('failStopKey', d[1].stop_key); pm.collectionVariables.set('failReference', d[1].orders[0].reference); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stops - All",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops?view=all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "all"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stops - Completed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops?view=completed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "completed"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Route (map pins)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/route?date={{today}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "route"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{today}}"
+                }
+              ]
+            },
+            "description": "Leave date empty for today."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stop detail (pickup)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{stopKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{stopKey}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stop detail (drop-off)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{dropoffStopKey}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{dropoffStopKey}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{reference}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{reference}}"
+              ]
+            },
+            "description": "The ⓘ popup. Use the reference (JOB-n), not the order name."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Failure reasons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/failure-reasons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "failure-reasons"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Pickup",
+      "description": "",
+      "item": [
+        {
+          "name": "Mark Picking Up",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{stopKey}}/picking-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{stopKey}}",
+                "picking-up"
+              ]
+            },
+            "description": "409 if this isn't your next stop.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.2347,\n  \"longitude\": -123.1561\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark Picked Up",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{stopKey}}/picked-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{stopKey}}",
+                "picked-up"
+              ]
+            },
+            "description": "left_behind: [{\"reference\":\"JOB-103\",\"action\":\"restart|fail\"}] and note is then required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"picked_up\": {{pickupRefs}},\n  \"left_behind\": [],\n  \"note\": null,\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.2347,\n  \"longitude\": -123.1561\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Undo last step (pickup)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{stopKey}}/undo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{stopKey}}",
+                "undo"
+              ]
+            },
+            "description": "expected_status = the status the stop has now.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expected_status\": \"picked_up\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark Picked Up (again after undo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{stopKey}}/picked-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{stopKey}}",
+                "picked-up"
+              ]
+            },
+            "description": "left_behind: [{\"reference\":\"JOB-103\",\"action\":\"restart|fail\"}] and note is then required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"picked_up\": {{pickupRefs}},\n  \"left_behind\": [],\n  \"note\": null,\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.2347,\n  \"longitude\": -123.1561\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Delivery & proof of delivery",
+      "description": "Upload photo sends postman/sample-proof.jpg (in Postman, pick any photo if the file is not found).",
+      "item": [
+        {
+          "name": "Mark In Transit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{dropoffStopKey}}/in-transit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{dropoffStopKey}}",
+                "in-transit"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.21,\n  \"longitude\": -123.13\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Undo last step (drop-off)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{dropoffStopKey}}/undo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{dropoffStopKey}}",
+                "undo"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expected_status\": \"in_transit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark In Transit (again after undo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{dropoffStopKey}}/in-transit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{dropoffStopKey}}",
+                "in-transit"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.21,\n  \"longitude\": -123.13\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload photo (to delete)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/photos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "photos"
+              ]
+            },
+            "description": "Pick a JPEG for 'file'. Saves photo_id.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "sample-proof.jpg"
+                },
+                {
+                  "key": "reference",
+                  "value": "{{dropoffReference}}",
+                  "type": "text"
+                },
+                {
+                  "key": "client_photo_id",
+                  "value": "{{$guid}}",
+                  "type": "text"
+                },
+                {
+                  "key": "taken_at",
+                  "value": "{{now}}",
+                  "type": "text"
+                },
+                {
+                  "key": "latitude",
+                  "value": "49.1835",
+                  "type": "text"
+                },
+                {
+                  "key": "longitude",
+                  "value": "-123.1352",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('photoId', j.photo_id);",
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('photoId', pm.response.json().photo_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete photo",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/photos/{{photoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "photos",
+                "{{photoId}}"
+              ]
+            },
+            "description": "Only before the delivery is submitted."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload photo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/photos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "photos"
+              ]
+            },
+            "description": "Pick a JPEG for 'file'. Saves photo_id.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "sample-proof.jpg"
+                },
+                {
+                  "key": "reference",
+                  "value": "{{dropoffReference}}",
+                  "type": "text"
+                },
+                {
+                  "key": "client_photo_id",
+                  "value": "{{$guid}}",
+                  "type": "text"
+                },
+                {
+                  "key": "taken_at",
+                  "value": "{{now}}",
+                  "type": "text"
+                },
+                {
+                  "key": "latitude",
+                  "value": "49.1835",
+                  "type": "text"
+                },
+                {
+                  "key": "longitude",
+                  "value": "-123.1352",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('photoId', j.photo_id);",
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark Delivered",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{dropoffStopKey}}/delivered",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{dropoffStopKey}}",
+                "delivered"
+              ]
+            },
+            "description": "Needs >=1 photo, left_at, customer_contact = not_needed | called | texted.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{dropoffReference}}\",\n  \"photos\": [\n    \"{{photoId}}\"\n  ],\n  \"left_at\": \"Front desk, concierge\",\n  \"customer_contact\": \"called\",\n  \"recipient_name\": \"Concierge\",\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.1835,\n  \"longitude\": -123.1352\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 Failed & problems",
+      "description": "",
+      "item": [
+        {
+          "name": "Report a problem (no status change)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/exceptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "exceptions"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_ref\": \"{{dropoffReference}}\",\n  \"type\": \"driver_delay\",\n  \"note\": \"Stuck on the bridge, ~20 min late\",\n  \"occurred_at\": \"{{now}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark In Transit (second drop-off)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{failStopKey}}/in-transit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{failStopKey}}",
+                "in-transit"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.21,\n  \"longitude\": -123.13\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fail delivery",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stops/{{failStopKey}}/failed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stops",
+                "{{failStopKey}}",
+                "failed"
+              ]
+            },
+            "description": "next_step = restart | return_to_pool",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{failReference}}\",\n  \"reason\": \"unable_to_contact\",\n  \"note\": \"Called twice, no answer\",\n  \"next_step\": \"return_to_pool\",\n  \"photos\": [],\n  \"client_time\": \"{{now}}\",\n  \"latitude\": 49.1835,\n  \"longitude\": -123.1352\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 Messages",
+      "description": "Mark read / Star need at least one dispatch message for this driver.",
+      "item": [
+        {
+          "name": "Inbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "messages"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.messages && j.messages[0]) pm.collectionVariables.set('messageId', j.messages[0].id);",
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark read",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/messages/{{messageId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "messages",
+                "{{messageId}}",
+                "read"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Star",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/messages/{{messageId}}/star",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "messages",
+                "{{messageId}}",
+                "star"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"starred\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 Analytics & connectivity",
+      "description": "",
+      "item": [
+        {
+          "name": "Analytics summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/summary?range=week",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "range",
+                  "value": "week"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ping",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ping",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ping"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Report app issue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/app-issues",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "app-issues"
+              ]
+            },
+            "description": "type = connectivity | app_function | camera | other",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"camera\",\n  \"detail\": \"Camera freezes after the 3rd photo\",\n  \"device\": {\n    \"model\": \"Pixel 7\",\n    \"android\": \"14\",\n    \"app_version\": \"1.0.0\"\n  },\n  \"net_status\": {\n    \"internet\": true,\n    \"dispatch\": true,\n    \"gps\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 End of day",
+      "description": "",
+      "item": [
+        {
+          "name": "Work: end",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "work"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"end\",\n  \"at\": \"{{now}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx or 409 (already ended automatically)', () => pm.expect([200, 201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Go offline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/presence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "presence"
+              ]
+            },
+            "description": "Online toggle off.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"online\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Revokes the refresh token and the current access token. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me after logout (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "Driver profile + dispatch phone."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

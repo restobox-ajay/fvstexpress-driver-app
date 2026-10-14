@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FVST Driver</string>
+    <string name="location_channel_name">Location sharing</string>
+    <string name="location_notification_title">You\'re online</string>
+    <string name="location_notification_text">Sharing your location with Dispatch</string>
+</resources>

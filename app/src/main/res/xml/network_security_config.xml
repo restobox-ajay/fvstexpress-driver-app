@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP is allowed so the app can reach the local WAMP server during development.
+     Switch the production server to HTTPS and set cleartextTrafficPermitted="false" before release. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
